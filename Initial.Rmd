@@ -1,0 +1,182 @@
+---
+title: "Initial Insights"
+author: "Raj Maddali"
+date: "March 14, 2016"
+output: html_document
+---
+
+###Executive Summary
+
+This documents provides our initial insight into the language corpus files provided to build an Natural Language predictor. We focussed on the English corpus, and used the tm package to provide some inital analysis. The analysis performed below tells us there are interesting patterns and word occurances that need to be examined deeper inorder to come up with an efficient NLP solution.
+
+
+### Data Sample
+
+Each of the files in their respective language directories are too large for any meaningful initial review. A sample of the English files was extracted using the following unix commands. This allows a more manageable data set for initial discovery
+
+###### *gshuf -n 20000 en_US.twitter.txt > sample/en_US.twitter.txt.2K*
+###### *gshuf -n 20000 en_US.blogs.txt > sample/en_US.blogs.txt.2K*
+###### *gshuf -n 20000 en_US.news.txt > sample/en_US.news.txt.2K*
+
+### Data Prep
+
+The tm package in the r language was used.The tm package provides many tools and internal functions to clean up the corpus. We performed a series of transformations (Appendix) to obtain a summary of the loaded corpus we use to study the data. 
+```{r,echo=FALSE,message=FALSE,cache=TRUE}
+setwd("/Users/rajmaddali/GitHub/Capstone/final/en_US")
+cname <- "/Users/rajmaddali/GitHub/Capstone/final/en_US/en_US.twitter.txt.2K"
+cdirname <- "/Users/rajmaddali/GitHub/Capstone/final/en_US/sample"
+library(tm)   
+library(utils)
+library(R.utils)
+library("RWeka")
+
+ 
+
+# Corpus
+docs <- Corpus(DirSource(cdirname))
+#
+summary(docs)
+
+# Cleanup
+#create the toSpace content transformer
+toSpace <- content_transformer(function(x, pattern) {return (gsub(pattern, " ", x))})
+toEnglish <- content_transformer(function(x) { return (iconv(x, "latin1", "ASCII", sub=""))})
+BigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+#tdm <- TermDocumentMatrix(docs, control = list(tokenize = BigramTokenizer)
+
+
+docs <- tm_map(docs, toEnglish)
+docs <- tm_map(docs, toSpace, ",")
+#docs <- docs2
+docs <- tm_map(docs, toSpace, "-")
+docs <- tm_map(docs, toSpace, ":")
+docs <- tm_map(docs, toSpace, '"')
+docs <- tm_map(docs, removePunctuation)
+docs <- tm_map(docs, tolower) 
+docs <- tm_map(docs, removeNumbers)   
+docs <- tm_map(docs, stripWhitespace)
+#docs <- tm_map(docs, removeWords, stopwords("english"))   # *Removing "stopwords" 
+docs <- tm_map(docs, PlainTextDocument)
+
+dtm_matrix <- sapply(c(1,2,3),function(x) {as.matrix(docs[[x]][1][[1]])})
+
+dtm_matrix <- sapply(c(1,2,3),function(x) {as.matrix(docs[[x]][1][[1]])})
+x <- write(dtm_matrix,"test.csv")
+
+```
+ 
+
+### Corpus Statistics
+
+Term Document Matrices (DTM) are the most common formats to organize text for computation purposes. Some important statistics are provided in the below subsections.
+
+##### Corpus Document Statistics
+```{r,echo=FALSE,message=FALSE,cache=TRUE}
+dtm <- DocumentTermMatrix(docs) 
+dtm
+
+dtm_matrix <- as.matrix(dtm)
+```
+##### Word Counts
+```{r,echo=FALSE,message=FALSE,cache=TRUE}
+data.frame(rowSums(dtm_matrix))
+```
+
+##### Line Count
+```{r,echo=FALSE,message=FALSE,cache=TRUE}
+sum(sapply(dtm,length)[1:dtm$nrow])
+```
+
+##### Word Frequencies (Top 10)
+```{r,echo=FALSE,message=FALSE,cache=TRUE}
+dtm_matrix_frequency <- colSums(dtm_matrix)
+sorted_cols <- sort(colSums(as.matrix(dtm)),decreasing=TRUE)
+head(sorted_cols,10)
+sdf = data.frame(head(sorted_cols,10))
+colnames(sdf) <- c("Count")
+sdf_plyr <- add_rownames(sdf,"Word")
+
+```
+
+
+### Word Associations
+
+We looked at additional tools/functions in the package with the goal of analyzing the word corpus in a more systematic fashion. The findFreqTerms has proven to be a useful function to give us more insight into the data. 
+
+Currently we limit our analyases of frequently occurring terms to those words (9 words) occuring extremely frequently (>3000). To those words we examine word associations with the findAssocs
+
+
+```{r,echo=FALSE,message=FALSE,cache=TRUE}
+
+frq <- findFreqTerms(dtm,lowfreq=3000)
+fas2 <- sapply(c(.99,.9,.8),function(y) {(sapply(frq,function(x) {length(findAssocs(dtm,x,y))}))})
+
+fas2
+
+```
+
+### Graphing Word Relationships
+
+A visual display of the data characteristics would help significantly. We plot a line plot of most common word frequncies and their associations across the corpus for a series of correllations.
+
+```{r,echo=FALSE,message=FALSE,cache=TRUE}
+library(dplyr)
+library(reshape2)
+fas_df <- data.frame(fas2)
+colnames(fas_df) = c(".99",".9",".8")
+fas_df_plyr <- add_rownames(fas_df,"Word")
+
+fas_df_melt <- melt(fas_df_plyr, id.vars = "Word")
+colnames(fas_df_melt) = c("Word","Percent","Count")
+
+
+library(ggplot2)
+p1 <- ggplot(sdf_plyr) + geom_histogram( aes(x=Word,y=Count,colors=Word),stat="identity") + ggtitle("Frequently Occurring Words - Counts")
+p1
+
+p2 <- ggplot(fas_df_melt, aes(x=Percent,y=Count,group=Word,color=Word)) + geom_line() + ggtitle("Frequently Occurring Words - Associations Percents")
+p2
+```
+
+### Next Steps
+
+Our goal is to explore and create an effective model to predict text entry. At our disposal is the existing corpus of words. We look to a) Expand beyond the sampling of the corpus  b) Come up with more sophisticated word associations  c) Examine deeper language characteristics such as n-grams  d) Examine current text prediction literature  and  e) Construct and deploy a model for text prediction.
+
+Following the completion of the above steps we will start construction of our Shiny App which integrates the inference engine with a GUI model.
+
+### Conclusion and Goals
+
+We have analyzed a sample of the English Corpus and have unearthed some initial statistics and some initial word relationships. As we move towards a full solution, we beleive our analysis will get more sophisticated and encompass larger portions of the data. 
+
+### Appendix
+```{r,echo=TRUE,message=FALSE,cache=TRUE}
+setwd("/Users/rajmaddali/GitHub/Capstone/final/en_US")
+cname <- "/Users/rajmaddali/GitHub/Capstone/final/en_US/en_US.twitter.txt.2K"
+cdirname <- "/Users/rajmaddali/GitHub/Capstone/final/en_US/sample"
+library(tm)   
+library(utils)
+library(R.utils)
+
+# Corpus
+docs <- Corpus(DirSource(cdirname))
+#
+#summary(docs)
+
+# Cleanup
+#create the toSpace content transformer
+toSpace <- content_transformer(function(x, pattern) {return (gsub(pattern, " ", x))})
+toEnglish <- content_transformer(function(x) { return (iconv(x, "latin1", "ASCII", sub=""))})
+
+docs <- tm_map(docs, toSpace, ",")
+#docs <- docs2
+docs <- tm_map(docs, toSpace, "-")
+docs <- tm_map(docs, toSpace, ":")
+docs <- tm_map(docs, toSpace, '"')
+docs <- tm_map(docs, removePunctuation)
+docs <- tm_map(docs, tolower) 
+docs <- tm_map(docs, removeNumbers)   
+docs <- tm_map(docs, stripWhitespace)
+docs <- tm_map(docs, removeWords, stopwords("english"))   # *Removing "stopwords" 
+docs <- tm_map(docs, PlainTextDocument)
+
+```
